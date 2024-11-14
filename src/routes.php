@@ -2,6 +2,7 @@
 
 use App\Config\Env;
 use App\Database\Database;
+use App\Services\NotificationService;
 use App\Services\UserUploader;
 use App\Utils\ApiResponse;
 
@@ -41,4 +42,16 @@ $router->add('POST', '/upload', function () use ($db) {
 		'message' => 'File processed successfully.',
 		'result' => $result,
 	]);
+});
+
+$router->add('GET', '/notify', function () use ($db) {
+	$pdo = $db->getConnection();
+	$stmt = $pdo->prepare("INSERT INTO notifications (name, message) VALUES (?, ?)");
+	$stmt->execute(['Спасибо, что Вы с нами!', 'Хотим поблагодарить Вас за то, что остаётесь с нами!']);
+	$notificationId = $pdo->lastInsertId();
+
+	$notificationService = new NotificationService($db);
+	$notificationService->sendNotifications($notificationId);
+
+	// ApiResponse::json($results);
 });
