@@ -42,70 +42,73 @@ class NotificationService
 		}
 	}
 
-	private function markAsSent(int $userId, int $notificationId): void
+	private function markAsSent(array $users, int $notificationId): void
 	{
 		$pdo = $this->database->getConnection();
-		$stmt = $pdo->prepare("
-            INSERT INTO user_notifications (user_id, notification_id, sent, sent_at)
-            VALUES (:user_id, :notification_id, TRUE, NOW())
-            ON DUPLICATE KEY UPDATE sent = TRUE, sent_at = NOW()
-        ");
-		$stmt->execute(['user_id' => $userId, 'notification_id' => $notificationId]);
-	}
 
-	private function fakeNotification(int $userId, int $notificationId, string $timestamp, bool $success): void
-	{
-		$logDir = __DIR__ . '/../Logs';
-		if (!file_exists($logDir)) {
-			mkdir($logDir, 0777, true);
+		$placeholders = implode(',', array_fill(0, count($users), '(?, ?, TRUE, NOW())'));
+		$sql = "
+            INSERT INTO user_notifications (user_id, notification_id, sent, sent_at)
+            VALUES $placeholders
+            ON DUPLICATE KEY UPDATE sent = TRUE, sent_at = NOW()
+        ";
+
+		$params = [];
+		foreach ($users as $user) {
+			$params[] = $user['user_id'];
+			$params[] = $notificationId;
 		}
 
-		$logMessage = "User ID: $userId, Notification ID: $notificationId";
+		$stmt = $pdo->prepare($sql);
+		$stmt->execute($params);
+	}
 
-
-		$logFile = $logDir . ($success ? "successful_notifications_$timestamp.txt" : "failed_notifications_$timestamp.txt");
-
-		file_put_contents($logFile, $logMessage . PHP_EOL, FILE_APPEND);
+	private function fakeNotification(int $userId, int $notificationId, string $timestamp, bool $success): string
+	{
+		$hash = hash('sha256', rand(600, 1000));
+		return "$hash - User ID: $userId, Notification ID: $notificationId, " . ($success ? 'Success' : 'Failed') . "\n";
 	}
 
 	public function sendNotifications(int $notificationId): array
 	{
 		$this->validateNotification($notificationId);
-		$users = $this->getPendingUsers($notificationId);
 
-		if (empty($users)) {
-			return [
-				'success' => true,
-				'message' => 'All users have already been notified.',
-				'data' => [
-					'notification_id' => $notificationId,
-					'sent' => 0,
-					'errors' => 0
-				]
-			];
+		$timestamp = date('Y-m-d_H-i-s');
+		$logDir = __DIR__ . '/../Logs';
+		if (!file_exists($logDir)) {
+			mkdir($logDir, 0744, true);
 		}
 
-		$sentCount = 0;
-		$errorCount = 0;
-		$timestamp = date('Y-m-d_H-i-s');
+		$successfulNotifications = [];
+		$failedNotifications = [];
+		$usersBatch = [];
 
-		foreach ($users as $user) {
-			$userId = $user['user_id'];
-
-			$pdo = $this->database->getConnection();
-			$pdo->beginTransaction();
-			try {
-				$this->fakeNotification($userId, $notificationId, $timestamp, true);
-				$this->markAsSent($userId, $notificationId);
-
-				$pdo->commit();
-				$sentCount++;
-			} catch (Exception $e) {
-				$this->fakeNotification($userId, $notificationId, $timestamp, false);
-
-				$pdo->rollBack();
-				$errorCount++;
+		foreach ($this->getPendingUsers($notificationId) as $user) {
+			$usersBatch[] = $user;
+			if (count($usersBatch) >= 100) {
+				$this->markAsSent($usersBatch, $notificationId);
+				foreach ($usersBatch as $user) {
+					$successfulNotifications[] = $this->fakeNotification($user['user_id'], $notificationId, $timestamp, true);
+				}
+				$usersBatch = [];
 			}
+		}
+
+		if (count($usersBatch) > 0) {
+			$this->markAsSent($usersBatch, $notificationId);
+			foreach ($usersBatch as $user) {
+				$successfulNotifications[] = $this->fakeNotification($user['user_id'], $notificationId, $timestamp, true);
+			}
+		}
+
+		if (!empty($successfulNotifications)) {
+			$logFile = $logDir . "/successful_notifications_$timestamp.txt";
+			file_put_contents($logFile, implode('', $successfulNotifications), FILE_APPEND);
+		}
+
+		if (!empty($failedNotifications)) {
+			$logFile = $logDir . "/failed_notifications_$timestamp.txt";
+			file_put_contents($logFile, implode('', $failedNotifications), FILE_APPEND);
 		}
 
 		return [
@@ -113,8 +116,8 @@ class NotificationService
 			'message' => 'Notification process completed.',
 			'data' => [
 				'notification_id' => $notificationId,
-				'sent' => $sentCount,
-				'errors' => $errorCount
+				'sent' => count($successfulNotifications),
+				'errors' => count($failedNotifications)
 			]
 		];
 	}
