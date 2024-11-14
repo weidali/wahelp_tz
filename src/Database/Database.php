@@ -34,6 +34,7 @@ class Database
 
 
 		$this->create();
+		$this->addUniqueIndexForNumberField();
 		$this->fill();
 	}
 
@@ -50,6 +51,26 @@ class Database
 		$this->pdo->exec($sql);
 	}
 
+	private function addUniqueIndexForNumberField(): void
+	{
+		$indexCheckSQL = "
+            SELECT COUNT(1) AS count
+            FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'users'
+              AND COLUMN_NAME = 'number'
+              AND INDEX_NAME = 'unique_number';
+        ";
+
+		$stmt = $this->pdo->query($indexCheckSQL);
+		$indexExists = $stmt->fetch(PDO::FETCH_ASSOC)['count'] > 0;
+
+		if (!$indexExists) {
+			$addIndexSQL = "CREATE UNIQUE INDEX unique_number ON users (number);";
+			$this->pdo->exec($addIndexSQL);
+		}
+	}
+
 	private function fill(): void
 	{
 		$stmt = $this->pdo->query("SELECT COUNT(*) FROM users");
@@ -59,8 +80,18 @@ class Database
 		if ($recordCount == 0) {
 			$stmt = $this->pdo->prepare("INSERT INTO users (number, name) VALUES (?, ?)");
 
-			$data = [978978978, "Micke Jack"];
-			$stmt->execute($data);
+			$data = [
+				[978978978, 'Micke Jack'],
+				['555555555', 'Test User'],
+			];
+
+			foreach ($data as $item) {
+				try {
+					$stmt->execute($item);
+				} catch (PDOException $e) {
+					echo "Ошибка вставки данных: " . $e->getMessage() . "\n";
+				}
+			}
 		}
 	}
 

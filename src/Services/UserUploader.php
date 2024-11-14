@@ -40,12 +40,23 @@ class UserUploader
 	{
 		$pdo = $this->database->getConnection();
 		$inserted = 0;
+		$exists = 0;
 		$errors = 0;
+
 		$this->database->getConnection()->beginTransaction();
 
 		foreach ($this->readCsv($filePath) as $row) {
 			$number = $row[0];
 			$name = $row[1];
+
+			$stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE number = :number");
+			$stmt->execute(['number' => $number]);
+			$columns = $stmt->fetchColumn() > 0;
+			if ($columns) {
+				$exists++;
+				continue;
+			}
+
 			try {
 				$stmt = $pdo->prepare("INSERT INTO users (number, name) VALUES (:number, :name)");
 				$stmt->execute([
@@ -59,6 +70,6 @@ class UserUploader
 		}
 		$this->database->getConnection()->commit();
 
-		return ['inserted' => $inserted, 'errors' => $errors];
+		return ['inserted' => $inserted, 'exists' => $exists, 'errors' => $errors];
 	}
 }
