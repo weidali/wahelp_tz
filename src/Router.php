@@ -2,6 +2,8 @@
 
 namespace App;
 
+use App\Utils\ApiResponse;
+
 class Router
 {
 	private array $routes = [];
@@ -20,12 +22,10 @@ class Router
 			}
 		}
 
-		http_response_code(404);
-		header('Content-Type: application/json');
-		echo json_encode([
+		ApiResponse::json([
 			'success' => false,
 			'message' => 'Route not found'
-		]);
+		], 404);
 		exit;
 	}
 }
