@@ -20,7 +20,7 @@ php -S localhost:8088
  <summary><code>GET</code> <code><b>/</b></code> <code>Get All users</code></summary>
 
 ##### Parameters
-> none
+> `none`
 
 ##### Responses
 > | http code     | content-type                      | response                                                            |
@@ -53,6 +53,22 @@ php -S localhost:8088
 > curl -X POST -F "file=@path/to/csv/file.csv" http://localhost:8088/upload
 > ```
 </details>
+<details>
+ <summary><code>GET</code> <code><b>/notify</b></code> <code>Fake Notification Service (api just for test)</code></summary>
+
+##### Parameters 
+> `none`
+
+##### Responses
+> | http code     | content-type                      | response                                                             |
+> |---------------|-----------------------------------|----------------------------------------------------------------------|
+> | `200`         | `application/json`                | `{"success":true,"message":"Notification process completed.","data":{"notification_id":11,"sent":10001,"errors":0}}` |
+
+##### Example cURL
+> ```bash
+> curl -X GET -H "Content-Type: application/json" http://localhost:8088/notify
+> ```
+</details>
 
 
 ## preview
@@ -61,3 +77,6 @@ php -S localhost:8088
 
 ### /upload
 [![upload|200x150](https://i.postimg.cc/zBPxx58S/temp-Image72jcf-D.avif)](https://postimg.cc/tZWdgK1Y)
+
+### /notify
+[![notify|200x150](https://i.postimg.cc/nhkC8hgx/temp-Imagez-USWZk.avif)](https://postimg.cc/tssXWp9v)

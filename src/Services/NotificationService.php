@@ -65,7 +65,7 @@ class NotificationService
 
 	private function fakeNotification(int $userId, int $notificationId, string $timestamp, bool $success): string
 	{
-		$hash = hash('sha256', rand(600, 1000));
+		$hash = hash('md5', rand(600, 6000));
 		return "$hash - User ID: $userId, Notification ID: $notificationId, " . ($success ? 'Success' : 'Failed') . "\n";
 	}
 
