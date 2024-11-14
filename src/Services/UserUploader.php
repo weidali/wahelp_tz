@@ -29,11 +29,28 @@ class UserUploader
 		fgetcsv($handle);
 
 		while (($row = fgetcsv($handle)) !== false) {
-			$row = array_map('trim', $row);
-			yield $row;
+			yield array_map('trim', $row);
 		}
 
 		fclose($handle);
+	}
+
+	private function userExists(string $number): bool
+	{
+		$stmt = $this->database->getConnection()->prepare("SELECT COUNT(*) FROM users WHERE number = :number");
+		$stmt->execute(['number' => $number]);
+		return $stmt->fetchColumn() > 0;
+	}
+
+	private function insertUser(string $number, string $name): bool
+	{
+		try {
+			$stmt = $this->database->getConnection()->prepare("INSERT INTO users (number, name) VALUES (:number, :name)");
+			$stmt->execute([':number' => $number, ':name' => $name]);
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
 	}
 
 	public function uploadFromCsv(string $filePath): array
@@ -43,33 +60,33 @@ class UserUploader
 		$exists = 0;
 		$errors = 0;
 
-		$this->database->getConnection()->beginTransaction();
+		$pdo->beginTransaction();
+		try {
+			foreach ($this->readCsv($filePath) as $row) {
+				[$number, $name] = $row;
 
-		foreach ($this->readCsv($filePath) as $row) {
-			$number = $row[0];
-			$name = $row[1];
+				if ($this->userExists($number)) {
+					$exists++;
+					continue;
+				}
 
-			$stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE number = :number");
-			$stmt->execute(['number' => $number]);
-			$columns = $stmt->fetchColumn() > 0;
-			if ($columns) {
-				$exists++;
-				continue;
+				if ($this->insertUser($number, $name)) {
+					$inserted++;
+				} else {
+					$errors++;
+				}
 			}
 
-			try {
-				$stmt = $pdo->prepare("INSERT INTO users (number, name) VALUES (:number, :name)");
-				$stmt->execute([
-					':number' => $number,
-					':name' => $name
-				]);
-				$inserted++;
-			} catch (Exception $e) {
-				$errors++;
-			}
+			$pdo->commit();
+		} catch (Exception $e) {
+			$pdo->rollBack();
+			throw new Exception("Transaction failed: " . $e->getMessage());
 		}
-		$this->database->getConnection()->commit();
 
-		return ['inserted' => $inserted, 'exists' => $exists, 'errors' => $errors];
+		return [
+			'inserted' => $inserted,
+			'exists' => $exists,
+			'errors' => $errors
+		];
 	}
 }
