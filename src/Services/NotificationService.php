@@ -14,22 +14,20 @@ class NotificationService
 		$this->database = $database;
 	}
 
-	private function fakeNotification(int $userId, int $notificationId): void
-	{
-		echo "Notification $notificationId sent to user $userId\n";
-	}
-
-	public function sendNotifications(int $notificationId): void
+	private function validateNotification(int $notificationId): void
 	{
 		$pdo = $this->database->getConnection();
-
-		$stmt = $pdo->prepare("SELECT * FROM notifications WHERE id = :id");
+		$stmt = $pdo->prepare("SELECT id FROM notifications WHERE id = :id");
 		$stmt->execute(['id' => $notificationId]);
-		$notification = $stmt->fetch();
 
-		if (!$notification) {
+		if (!$stmt->fetch()) {
 			throw new Exception("Notification with ID $notificationId does not exist.");
 		}
+	}
+
+	private function getPendingUsers(int $notificationId): \Generator
+	{
+		$pdo = $this->database->getConnection();
 
 		$stmt = $pdo->prepare("
             SELECT u.id AS user_id
@@ -39,33 +37,85 @@ class NotificationService
         ");
 		$stmt->execute(['notification_id' => $notificationId]);
 
-		$users = $stmt->fetchAll();
+		while ($user = $stmt->fetch()) {
+			yield $user;
+		}
+	}
+
+	private function markAsSent(int $userId, int $notificationId): void
+	{
+		$pdo = $this->database->getConnection();
+		$stmt = $pdo->prepare("
+            INSERT INTO user_notifications (user_id, notification_id, sent, sent_at)
+            VALUES (:user_id, :notification_id, TRUE, NOW())
+            ON DUPLICATE KEY UPDATE sent = TRUE, sent_at = NOW()
+        ");
+		$stmt->execute(['user_id' => $userId, 'notification_id' => $notificationId]);
+	}
+
+	private function fakeNotification(int $userId, int $notificationId, string $timestamp, bool $success): void
+	{
+		$logDir = __DIR__ . '/../Logs';
+		if (!file_exists($logDir)) {
+			mkdir($logDir, 0777, true);
+		}
+
+		$logMessage = "User ID: $userId, Notification ID: $notificationId";
+
+
+		$logFile = $logDir . ($success ? "successful_notifications_$timestamp.txt" : "failed_notifications_$timestamp.txt");
+
+		file_put_contents($logFile, $logMessage . PHP_EOL, FILE_APPEND);
+	}
+
+	public function sendNotifications(int $notificationId): array
+	{
+		$this->validateNotification($notificationId);
+		$users = $this->getPendingUsers($notificationId);
 
 		if (empty($users)) {
-			echo "All users have already been notified.\n";
-			return;
+			return [
+				'success' => true,
+				'message' => 'All users have already been notified.',
+				'data' => [
+					'notification_id' => $notificationId,
+					'sent' => 0,
+					'errors' => 0
+				]
+			];
 		}
+
+		$sentCount = 0;
+		$errorCount = 0;
+		$timestamp = date('Y-m-d_H-i-s');
 
 		foreach ($users as $user) {
 			$userId = $user['user_id'];
 
+			$pdo = $this->database->getConnection();
+			$pdo->beginTransaction();
 			try {
-				$pdo->beginTransaction();
-
-				$this->fakeNotification($userId, $notificationId);
-
-				$stmt = $pdo->prepare("
-                    INSERT INTO user_notifications (user_id, notification_id, sent, sent_at)
-                    VALUES (:user_id, :notification_id, TRUE, NOW())
-                    ON DUPLICATE KEY UPDATE sent = TRUE, sent_at = NOW()
-                ");
-				$stmt->execute(['user_id' => $userId, 'notification_id' => $notificationId]);
+				$this->fakeNotification($userId, $notificationId, $timestamp, true);
+				$this->markAsSent($userId, $notificationId);
 
 				$pdo->commit();
+				$sentCount++;
 			} catch (Exception $e) {
+				$this->fakeNotification($userId, $notificationId, $timestamp, false);
+
 				$pdo->rollBack();
-				echo "Failed to send notification to user $userId: " . $e->getMessage() . "\n";
+				$errorCount++;
 			}
 		}
+
+		return [
+			'success' => true,
+			'message' => 'Notification process completed.',
+			'data' => [
+				'notification_id' => $notificationId,
+				'sent' => $sentCount,
+				'errors' => $errorCount
+			]
+		];
 	}
 }

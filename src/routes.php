@@ -51,7 +51,7 @@ $router->add('GET', '/notify', function () use ($db) {
 	$notificationId = $pdo->lastInsertId();
 
 	$notificationService = new NotificationService($db);
-	$notificationService->sendNotifications($notificationId);
+	$result = $notificationService->sendNotifications($notificationId);
 
-	// ApiResponse::json($results);
+	ApiResponse::json($result);
 });

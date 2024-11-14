@@ -12,6 +12,7 @@ Thumbs.db
 __MACOSX/
 
 /uploads/
+/src/Logs/*
 
 vendor/
 node_modules/
