@@ -8,7 +8,7 @@ use PDOException;
 
 class Database
 {
-	private $pdo;
+	private PDO $pdo;
 
 	/**
 	 * Конструктор класса Database
@@ -62,6 +62,11 @@ class Database
 			$data = [978978978, "Micke Jack"];
 			$stmt->execute($data);
 		}
+	}
+
+	public function getConnection(): PDO
+	{
+		return $this->pdo;
 	}
 
 	public function get(): array
